@@ -1,5 +1,6 @@
 import mimetypes
 import os.path
+from django.core.files import File
 from django.core.files.storage import Storage
 from django.conf import settings
 from oss.oss_api import OssAPI
@@ -44,8 +45,20 @@ class AliyunOssStorage(Storage):
         self._put_file(name, content)
         return name
 
-    def open(self, name, mode='rb'):
-        pass
+    def _open(self, name, mode='rb'):
+        name = self._clean_name(name)
+        f = AliyunOssFile(name, mode='rb', self)
+        if not f.key:
+            raise IOError('')
+        return f
+
+    def _read(self, name):
+        name = self._clean_name(name)
+        res = self.connection.get_object(self.bucket, name)
+        if (res.status / 100) == 2:
+            return res.read()
+        else:
+            raise IOError("OSSStorageReadError: %s", res.read())
 
     def delete(self, name):
         name = self._clean_name(name)
@@ -83,3 +96,45 @@ class AliyunOssStorage(Storage):
 
     def url(self, name):
         pass
+
+class AliyunOssFile(File):
+    def __init__(self, name, mode, storage):
+        self.name = name.lstrip('/')
+        self.mode = mode
+
+        self.storage = storage
+
+        self._file = None
+        self._is_dirty = False
+
+    @property
+    def size(self):
+        return self.storage.size(self.name)
+
+    @property
+    def file(self):
+        if self._file is None:
+            self._file = StringIO()
+            if 'r' in self.mode:
+                self._is_dirty = False
+                self._file.write(self.storage._read(self.name))
+                self._file.seek(0)
+        return self._file
+
+    def read(self, *args, **kwargs):
+        if 'r' not in self._mode:
+            raise AttributeError("File was not opened in read mode.")
+        return super(AliyunOssFile, self).read(*args, **kwargs)
+
+    def write(self, *args, **kwargs):
+        if 'w' not in self._mode:
+            raise AttributeError("File was opened for read-only access.")
+        self._is_dirty = True
+        return super(AliyunOssFile, self).write(*args, **kwargs)
+
+    def close(self):
+        if self._is_dirty:
+            self.storage.connection.put_object_from_fp(self.storage.bucket, self.name, self._file)
+        self._file.close()
+
+
