@@ -28,6 +28,7 @@ class AliyunOssStorage(Storage):
         self.connection = self.get_connection(self.host, access_key, secret_key)
 
     def get_connection(self, host, accessid, accesskey):
+        print host, accessid, accesskey
         return OssAPI(host,accessid, accesskey)
 
     def _put_file(self, filename, content):
@@ -47,7 +48,7 @@ class AliyunOssStorage(Storage):
 
     def _open(self, name, mode='rb'):
         name = self._clean_name(name)
-        f = AliyunOssFile(name, mode='rb', self)
+        f = AliyunOssFile(name, 'rb', self)
         if not f.key:
             raise IOError('')
         return f
@@ -95,7 +96,7 @@ class AliyunOssStorage(Storage):
 
 
     def url(self, name):
-        pass
+        return 'http://%s.%s/%s' % (self.bucket, self.host, name)
 
 class AliyunOssFile(File):
     def __init__(self, name, mode, storage):
